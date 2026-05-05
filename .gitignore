@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+frontend/dist/
+blockchain/artifacts/
+blockchain/cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local databases and runtime files
+*.sqlite
+*.sqlite3
+backend/*.sqlite
+backend/*.sqlite3
+uploads/
+backend/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Office temporary lock files
+~$*
+
+# Hardhat/local chain output
+typechain/
+typechain-types/
+
+# Optional generated reports/large exports
+*.tmp
+*.temp
