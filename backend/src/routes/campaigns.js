@@ -71,7 +71,7 @@ router.post('/upload-image', authenticateToken, upload.single('image'), async (r
 // Create campaign (auth required)
 router.post('/', authenticateToken, upload.single('image'), async (req, res) => {
   try {
-    const { title, description, goal, deadline, contract_campaign_id } = req.body;
+    const { title, description, goal, deadline, contract_campaign_id, contract_address } = req.body;
     let ipfs_hash = req.body.ipfs_hash || null;
 
     if (req.file) {
@@ -86,6 +86,7 @@ router.post('/', authenticateToken, upload.single('image'), async (req, res) => 
       deadline,
       ipfs_hash,
       contract_campaign_id, // Passed from frontend after smart contract interaction
+      contract_address,
       creator_wallet: req.user.wallet_address
     });
 

@@ -55,6 +55,7 @@ export const useContract = () => {
         withdrawFunds: (...args) => executeTransaction('withdrawFunds', ...args),
         refundContribution: (...args) => executeTransaction('refundContribution', ...args),
         getCampaignDetails: (...args) => executeTransaction('getCampaignDetails', ...args),
+        getCampaignContributionEvents: (...args) => executeTransaction('getCampaignContributionEvents', ...args),
         loading,
         error
     };

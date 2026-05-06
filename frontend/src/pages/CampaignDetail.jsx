@@ -6,17 +6,23 @@ import { useWallet } from '../hooks/useWallet';
 import { Loader2, AlertCircle, ArrowLeft, Activity, Users, Clock } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import LoadingTerminal from '../components/LoadingTerminal';
-import { addPendingContribution, getOptimisticAmountForCampaign, reconcilePendingContributions } from '../utils/contributionPersistence';
+import {
+    addPendingContribution,
+    getOptimisticAmountForCampaign,
+    getPendingContributionsForCampaign,
+    reconcilePendingContributions
+} from '../utils/contributionPersistence';
 
 const CampaignDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const { currentAccount } = useWallet();
-    const { getCampaignDetails, contributeToCampaign, withdrawFunds, refundContribution } = useContract();
+    const { getCampaignDetails, getCampaignContributionEvents, contributeToCampaign, withdrawFunds, refundContribution } = useContract();
     
     const [dbCampaign, setDbCampaign] = useState(null);
     const [onChainData, setOnChainData] = useState(null);
+    const [contributionEvents, setContributionEvents] = useState([]);
     const [optimisticBoost, setOptimisticBoost] = useState(0);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
@@ -59,6 +65,16 @@ const CampaignDetail = () => {
         ipfs_hash: chainData.ipfs_hash,
     });
 
+    const refreshContributionEvents = async (campaignId) => {
+        try {
+            const events = await getCampaignContributionEvents(Number(campaignId));
+            setContributionEvents(events);
+        } catch (err) {
+            console.warn('Unable to load contribution events for chart.', err);
+            setContributionEvents([]);
+        }
+    };
+
     const fetchData = async () => {
         setLoading(true);
         setError('');
@@ -69,6 +85,7 @@ const CampaignDetail = () => {
                 setOnChainData(chainData);
                 reconcilePendingContributions(chainData.id, chainData.amountRaised);
                 setOptimisticBoost(getOptimisticAmountForCampaign(chainData.id));
+                await refreshContributionEvents(chainData.id);
             } else {
                 const res = await api.get(`/campaigns/${id}`);
                 setDbCampaign(res.data);
@@ -77,6 +94,9 @@ const CampaignDetail = () => {
                     setOnChainData(chainData);
                     reconcilePendingContributions(res.data.contract_campaign_id, chainData.amountRaised);
                     setOptimisticBoost(getOptimisticAmountForCampaign(res.data.contract_campaign_id));
+                    await refreshContributionEvents(res.data.contract_campaign_id);
+                } else {
+                    setContributionEvents([]);
                 }
             }
             setLoading(false);
@@ -88,6 +108,7 @@ const CampaignDetail = () => {
                     setOnChainData(chainData);
                     reconcilePendingContributions(chainData.id, chainData.amountRaised);
                     setOptimisticBoost(getOptimisticAmountForCampaign(chainData.id));
+                    await refreshContributionEvents(chainData.id);
                     setLoading(false);
                     return;
                 } catch (chainErr) {
@@ -111,7 +132,7 @@ const CampaignDetail = () => {
         try {
             await delay(800); setTerminalStep(1);
             await contributeToCampaign(dbCampaign.contract_campaign_id, contributionAmount);
-            addPendingContribution(dbCampaign.contract_campaign_id, contributionAmount);
+            addPendingContribution(dbCampaign.contract_campaign_id, contributionAmount, amountRaised);
             setOptimisticBoost(getOptimisticAmountForCampaign(dbCampaign.contract_campaign_id));
             setTerminalStep(2);
             await delay(1000); // Simulate confirming block length
@@ -160,15 +181,45 @@ const CampaignDetail = () => {
     const goal = parseFloat(dbCampaign.goal);
     const amountRaised = (onChainData ? parseFloat(onChainData.amountRaised) : 0) + optimisticBoost;
     const percentage = Math.min((amountRaised / goal) * 100, 100);
+    const amountPrecision = amountRaised > 0 && amountRaised < 0.001 ? 6 : 4;
+    const displayedAmountRaised = Number(amountRaised.toFixed(amountPrecision)).toString();
+    const displayedPercentage = percentage > 0 && percentage < 0.1 ? percentage.toFixed(4) : percentage.toFixed(1);
     const isCreator = currentAccount && currentAccount.toLowerCase() === dbCampaign.creator_wallet.toLowerCase();
     const deadlinePassed = new Date() > new Date(dbCampaign.deadline);
     const goalMet = amountRaised >= goal;
-
-    // Fake chart data based on amountRaised
-    const mockChartData = Array.from({length: 10}).map((_, i) => ({
-        day: `Day ${i + 1}`,
-        raised: i < 9 ? amountRaised * (i / 10) : amountRaised
+    const campaignChainId = dbCampaign.contract_campaign_id ?? onChainData?.id ?? id;
+    const pendingChartEvents = getPendingContributionsForCampaign(campaignChainId).map(item => ({
+        campaignId: Number(campaignChainId),
+        contributor: currentAccount || 'Pending wallet',
+        amount: Number(item.amount || 0),
+        timestamp: Math.floor(item.timestamp / 1000),
+        transactionHash: 'pending',
     }));
+    const allChartEvents = [...contributionEvents, ...pendingChartEvents]
+        .filter(event => Number(event.amount) > 0)
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    const firstEventTimestamp = allChartEvents[0]?.timestamp || Math.floor(Date.now() / 1000);
+    const chartByDay = allChartEvents.reduce((acc, event) => {
+        const dayNumber = Math.max(1, Math.floor(((event.timestamp || firstEventTimestamp) - firstEventTimestamp) / 86400) + 1);
+        const label = `Day ${dayNumber}`;
+        const previous = acc.get(label) || 0;
+        acc.set(label, previous + Number(event.amount || 0));
+        return acc;
+    }, new Map());
+    let cumulativeRaised = 0;
+    const chartData = [{ day: 'Start', raised: 0 }];
+    chartByDay.forEach((dailyAmount, day) => {
+        cumulativeRaised += dailyAmount;
+        chartData.push({ day, raised: cumulativeRaised });
+    });
+    if (chartData.length === 1) {
+        chartData.push({ day: 'Day 1', raised: amountRaised });
+    }
+    const chartFinalRaised = chartData[chartData.length - 1]?.raised || 0;
+    if (amountRaised > chartFinalRaised) {
+        chartData.push({ day: chartData.length === 1 ? 'Day 1' : 'Current', raised: amountRaised });
+    }
+    const uniqueWallets = new Set(allChartEvents.map(event => event.contributor?.toLowerCase?.() || event.contributor)).size;
 
     return (
         <div className="container mx-auto px-6 py-8 max-w-6xl relative">
@@ -215,7 +266,7 @@ const CampaignDetail = () => {
                         <h3 className="font-mono text-sm text-slate-400 mb-6 flex items-center gap-2"><Activity size={16}/> LIQUIDITY TRAJECTORY</h3>
                         <div className="h-[250px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={mockChartData}>
+                                <AreaChart data={chartData}>
                                     <defs>
                                         <linearGradient id="colorRaised" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
@@ -223,7 +274,7 @@ const CampaignDetail = () => {
                                         </linearGradient>
                                     </defs>
                                     <XAxis dataKey="day" stroke="#475569" fontSize={12} tickLine={false} axisLine={false}/>
-                                    <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => v.toFixed(1)} />
+                                    <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => Number(v).toFixed(4)} />
                                     <Tooltip contentStyle={{backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px'}} itemStyle={{color: '#fff'}} />
                                     <Area type="monotone" dataKey="raised" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorRaised)" />
                                 </AreaChart>
@@ -237,7 +288,7 @@ const CampaignDetail = () => {
                         <div className="mb-2 font-mono text-xs text-secondary tracking-widest border border-secondary/20 bg-secondary/10 inline-block px-2 py-1 rounded">LIVE ON-CHAIN</div>
                         <div className="mb-6 mt-4">
                             <span className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-300">
-                                {Math.round(amountRaised * 1000) / 1000}
+                                {displayedAmountRaised}
                                 {optimisticBoost > 0 && (
                                     <span className="text-sm text-primary animate-pulse font-mono ml-2">(Syncing...)</span>
                                 )}
@@ -250,14 +301,14 @@ const CampaignDetail = () => {
                         </div>
                         
                         <div className="flex justify-between text-xs font-mono text-slate-400 mb-8 pb-6 border-b border-slate-800">
-                            <span>{percentage.toFixed(1)}% / 100%</span>
+                            <span>{displayedPercentage}% / 100%</span>
                             <span>GOAL: {goal}</span>
                         </div>
 
                         <div className="flex flex-col gap-4 mb-8">
                             <div className="flex items-center gap-3 text-sm text-slate-300">
                                 <Users size={18} className="text-slate-500" />
-                                <span><span className="font-bold text-white tracking-widest font-mono">14</span> Unique Wallets</span>
+                                <span><span className="font-bold text-white tracking-widest font-mono">{uniqueWallets}</span> Unique Wallets</span>
                             </div>
                             <div className="flex items-center gap-3 text-sm text-slate-300">
                                 <Clock size={18} className="text-slate-500" />

@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { useAuth } from '../hooks/useAuth';
-import { DollarSign, LayoutGrid, Wallet, LogOut } from 'lucide-react';
+import { BarChart3, DollarSign, LayoutGrid, Scale, ShieldCheck, Wallet, LogOut } from 'lucide-react';
 
 const Navbar = () => {
   const { currentAccount, chainId, connectWallet } = useWallet();
@@ -20,6 +20,15 @@ const Navbar = () => {
           </Link>
           <Link to="/my-income" className="text-textMuted hover:text-primary transition-colors flex items-center gap-1">
             <DollarSign size={18} /> My Income
+          </Link>
+          <Link to="/governance-live" className="text-textMuted hover:text-primary transition-colors flex items-center gap-1">
+            <Scale size={18} /> Governance
+          </Link>
+          <Link to="/staking-live" className="text-textMuted hover:text-primary transition-colors flex items-center gap-1">
+            <ShieldCheck size={18} /> Staking
+          </Link>
+          <Link to="/analytics-live" className="text-textMuted hover:text-primary transition-colors flex items-center gap-1">
+            <BarChart3 size={18} /> Analytics
           </Link>
         </div>
       </div>

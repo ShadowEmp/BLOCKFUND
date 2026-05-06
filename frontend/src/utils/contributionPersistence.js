@@ -9,11 +9,13 @@ const STORAGE_KEY = 'pending_contributions';
 /**
  * Adds a pending contribution to local storage.
  */
-export const addPendingContribution = (campaignId, amount) => {
+export const addPendingContribution = (campaignId, amount, confirmedAmount = 0) => {
     const pending = getPendingContributions();
+    const parsedAmount = parseFloat(amount);
     const newEntry = {
         campaignId: Number(campaignId),
-        amount: parseFloat(amount),
+        amount: parsedAmount,
+        expectedOnChainAmount: Number(confirmedAmount || 0) + parsedAmount,
         timestamp: Date.now()
     };
     pending.push(newEntry);
@@ -48,16 +50,32 @@ export const getOptimisticAmountForCampaign = (campaignId) => {
         .reduce((sum, item) => sum + item.amount, 0);
 };
 
+export const getPendingContributionsForCampaign = (campaignId) => (
+    getPendingContributions().filter(item => item.campaignId === Number(campaignId))
+);
+
 /**
  * Clears or updates pending contributions once a real update is received.
  * This is usually called after fetchData() successfully retrieves new on-chain data.
  */
-export const reconcilePendingContributions = (campaignId, _onChainAmount) => {
-    // For simplicity in this dev version, we just clear everything older than the current reconcile call
-    // or we can just leave them to expire after 5 mins.
-    // A better way: clear all pending items for this campaignId if onChainAmount has increased.
+export const reconcilePendingContributions = (campaignId, onChainAmount) => {
+    const campaignKey = Number(campaignId);
     const pending = getPendingContributions();
-    const filtered = pending.filter(item => item.campaignId !== Number(campaignId));
+    const campaignPending = pending.filter(item => item.campaignId === campaignKey);
+    const chainTotal = Number(onChainAmount || 0);
+    const expectedTotal = campaignPending.reduce((max, item) => (
+        Math.max(max, Number(item.expectedOnChainAmount || item.amount || 0))
+    ), 0);
+
+    if (!campaignPending.length) return;
+
+    // Keep pending amounts visible while the RPC endpoint is still returning stale state.
+    if (chainTotal + Number.EPSILON < expectedTotal) {
+        window.dispatchEvent(new Event('pendingContributionsUpdated'));
+        return;
+    }
+
+    const filtered = pending.filter(item => item.campaignId !== campaignKey);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
     window.dispatchEvent(new Event('pendingContributionsUpdated'));
 };

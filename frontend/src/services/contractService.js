@@ -378,6 +378,42 @@ export const getCampaignDetails = async (campaignId) => {
     }
 };
 
+export const getCampaignContributionEvents = async (campaignId) => {
+    const provider = getProvider();
+    if (!provider) throw new Error("No ethereum provider found");
+    await assertContractDeployed(provider);
+
+    const contract = getContract(provider);
+    const filter = contract.filters.FundReceived(Number(campaignId));
+
+    let events = [];
+    try {
+        events = await contract.queryFilter(filter, 0, 'latest');
+    } catch (_err) {
+        const latestBlock = await provider.getBlockNumber();
+        const fromBlock = Math.max(0, latestBlock - 50000);
+        events = await contract.queryFilter(filter, fromBlock, 'latest');
+    }
+
+    const blockCache = new Map();
+    const getBlockTimestamp = async (blockNumber) => {
+        if (!blockCache.has(blockNumber)) {
+            blockCache.set(blockNumber, provider.getBlock(blockNumber));
+        }
+        const block = await blockCache.get(blockNumber);
+        return block?.timestamp || 0;
+    };
+
+    return Promise.all(events.map(async (event) => ({
+        campaignId: toNumber(event.args.campaignId),
+        contributor: event.args.contributor,
+        amount: Number(ethers.utils.formatEther(event.args.amount)),
+        transactionHash: event.transactionHash,
+        blockNumber: event.blockNumber,
+        timestamp: await getBlockTimestamp(event.blockNumber),
+    })));
+};
+
 /**
  * Robust Resilience Fetcher:
  * Gets a total count from the chain and fetches and details for missing items.

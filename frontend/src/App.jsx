@@ -20,6 +20,9 @@ import Governance from './pages/Governance';
 import Staking from './pages/Staking';
 import Analytics from './pages/Analytics';
 import MyIncome from './pages/MyIncome';
+import GovernanceLive from './pages/GovernanceLive';
+import StakingLive from './pages/StakingLive';
+import AnalyticsLive from './pages/AnalyticsLive';
 
 import { useAuth } from './hooks/useAuth';
 
@@ -68,6 +71,9 @@ const App = () => {
                 <Route path="/governance" element={<Governance />} />
                 <Route path="/staking" element={<Staking />} />
                 <Route path="/analytics" element={<Analytics />} />
+                <Route path="/governance-live" element={<GovernanceLive />} />
+                <Route path="/staking-live" element={<StakingLive />} />
+                <Route path="/analytics-live" element={<AnalyticsLive />} />
                 <Route 
                   path="/my-income" 
                   element={

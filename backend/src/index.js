@@ -2,7 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const { DataTypes } = require('sequelize');
 const sequelize = require('./models');
+const Campaign = require('./models/Campaign');
 
 // Load env vars
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -28,7 +30,22 @@ app.get('/health', (req, res) => {
 // Sync Database and Start Server
 const PORT = process.env.PORT || 5000;
 
+const ensureCampaignSchema = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+  const tableName = Campaign.getTableName();
+  const table = await queryInterface.describeTable(tableName);
+
+  if (!table.contract_address) {
+    await queryInterface.addColumn(tableName, 'contract_address', {
+      type: DataTypes.STRING,
+      allowNull: true,
+    });
+    console.log('Added Campaign.contract_address column');
+  }
+};
+
 sequelize.sync() // Auto-creates tables if they don't exist without violating SQLite FK constraints
+  .then(ensureCampaignSchema)
   .then(() => {
     console.log('Database connected and synced');
     app.listen(PORT, () => {

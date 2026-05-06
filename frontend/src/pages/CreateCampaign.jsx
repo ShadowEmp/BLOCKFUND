@@ -96,6 +96,7 @@ const CreateCampaign = () => {
         deadline: formData.deadline,
         ipfs_hash: ipfsHash || null,
         contract_campaign_id: campaignId,
+        contract_address: contractAddress,
       };
 
       saveLocalCampaign({
